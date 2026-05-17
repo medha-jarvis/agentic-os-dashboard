@@ -55,11 +55,12 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
       const [statsRes, agentsRes, tasksRes, logsRes] = await Promise.all([
-        fetch('/api/stats'),
-        fetch('/api/agents'),
-        fetch('/api/tasks'),
-        fetch('/api/logs?limit=20'),
+        fetch(`${apiBase}/stats`),
+        fetch(`${apiBase}/agents`),
+        fetch(`${apiBase}/tasks`),
+        fetch(`${apiBase}/logs?limit=20`),
       ]);
 
       const [statsData, agentsData, tasksData, logsData] = await Promise.all([
