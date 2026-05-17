@@ -55,7 +55,7 @@ export default function Dashboard() {
 
   const fetchData = async () => {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || '/api';
+      const apiBase = '/api/proxy';
       const [statsRes, agentsRes, tasksRes, logsRes] = await Promise.all([
         fetch(`${apiBase}/stats`),
         fetch(`${apiBase}/agents`),
