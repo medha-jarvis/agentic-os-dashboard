@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE = process.env.API_BASE_URL || 'http://31.97.227.135:5000/api';
+const API_BASE = process.env.API_BASE_URL || 'http://31.97.227.135/api';
 
 export async function GET(
   request: NextRequest,
@@ -14,14 +14,21 @@ export async function GET(
 
     console.log('[Proxy] Fetching from:', url);
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
+        'User-Agent': 'Vercel-Dashboard/1.0',
       },
       cache: 'no-store',
       next: { revalidate: 0 },
+      signal: controller.signal,
     });
+
+    clearTimeout(timeoutId);
 
     console.log('[Proxy] Response status:', response.status);
 
@@ -57,3 +64,4 @@ export async function GET(
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
+export const maxDuration = 60;
