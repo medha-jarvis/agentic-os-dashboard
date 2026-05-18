@@ -148,14 +148,14 @@ export default function Dashboard() {
     const fetchData = async () => {
       try {
         const [statsRes, agentsRes, tasksRes, logsRes, costRes, budgetRes, perfRes, reliabilityRes] = await Promise.all([
-          fetch('/api/stats'),
-          fetch('/api/agents'),
-          fetch('/api/tasks'),
-          fetch('/api/logs'),
-          fetch('/api/cost'),
-          fetch('/api/budget'),
-          fetch('/api/performance'),
-          fetch('/api/reliability')
+          fetch('/api/proxy/stats'),
+          fetch('/api/proxy/agents'),
+          fetch('/api/proxy/tasks'),
+          fetch('/api/proxy/logs'),
+          fetch('/api/proxy/cost'),
+          fetch('/api/proxy/budget'),
+          fetch('/api/proxy/performance'),
+          fetch('/api/proxy/reliability')
         ]);
 
         const [statsData, agentsData, tasksData, logsData, costData, budgetData, perfData, reliabilityData] = await Promise.all([
