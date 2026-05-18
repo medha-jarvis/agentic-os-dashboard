@@ -152,10 +152,10 @@ export default function Dashboard() {
           fetch('/api/proxy/agents'),
           fetch('/api/proxy/tasks'),
           fetch('/api/proxy/logs'),
-          fetch('/api/proxy/cost'),
-          fetch('/api/proxy/budget'),
-          fetch('/api/proxy/performance'),
-          fetch('/api/proxy/reliability')
+          fetch('/api/proxy/metrics/costs'),
+          fetch('/api/proxy/metrics/budget'),
+          fetch('/api/proxy/metrics/performance'),
+          fetch('/api/proxy/metrics/reliability')
         ]);
 
         const [statsData, agentsData, tasksData, logsData, costData, budgetData, perfData, reliabilityData] = await Promise.all([
