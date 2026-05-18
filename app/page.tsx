@@ -8,8 +8,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Activity, CheckCircle2, Clock, AlertCircle, Bot, ListTodo, Bell, DollarSign,
-  Zap, Shield, TrendingUp, Brain, Globe, FileSearch, Users, Sparkles
+  Zap, Shield, TrendingUp, Brain, Globe, FileSearch, Users, Sparkles, Network
 } from 'lucide-react';
+import Link from 'next/link';
 import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, AreaChart, Area } from 'recharts';
 
 // Interfaces
@@ -239,6 +240,12 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/knowledge">
+                <Badge variant="outline" className="px-3 py-1 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-950 transition-colors border-purple-300">
+                  <Network className="h-3 w-3 mr-1 text-purple-600" />
+                  <span className="text-purple-700 dark:text-purple-300 font-medium">Knowledge Graph</span>
+                </Badge>
+              </Link>
               <Badge variant="outline" className="px-3 py-1 border-green-300 bg-green-50 dark:bg-green-950">
                 <Activity className="h-3 w-3 mr-1 text-green-600" />
                 <span className="text-green-700 dark:text-green-300 font-medium">System Online</span>
