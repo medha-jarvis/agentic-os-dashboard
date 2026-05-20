@@ -240,6 +240,12 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/portfolio">
+                <Badge variant="outline" className="px-3 py-1 cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-colors border-emerald-300">
+                  <TrendingUp className="h-3 w-3 mr-1 text-emerald-600" />
+                  <span className="text-emerald-700 dark:text-emerald-300 font-medium">Portfolio</span>
+                </Badge>
+              </Link>
               <Link href="/knowledge">
                 <Badge variant="outline" className="px-3 py-1 cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-950 transition-colors border-purple-300">
                   <Network className="h-3 w-3 mr-1 text-purple-600" />

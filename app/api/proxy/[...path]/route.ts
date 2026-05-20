@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const API_BASE = process.env.API_BASE_URL || 'http://31.97.227.135/api';
+const API_BASE = process.env.API_BASE_URL || 'http://31.97.227.135:5000/api';
 
 export async function GET(
   request: NextRequest,
