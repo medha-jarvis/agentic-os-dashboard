@@ -114,6 +114,8 @@ export default function EnhancedPortfolioPage() {
   const handleRefresh = async () => {
     try {
       setRefreshing(true);
+      console.log('[Refresh] Starting price refresh (takes ~76 seconds)...');
+
       const response = await fetch('/api/proxy/portfolio/refresh', {
         method: 'POST',
       });
@@ -122,13 +124,15 @@ export default function EnhancedPortfolioPage() {
         throw new Error('Failed to refresh prices');
       }
 
-      // Wait a moment for backend to update, then refetch
-      setTimeout(() => {
-        fetchData();
-        setRefreshing(false);
-      }, 2000);
+      const result = await response.json();
+      console.log('[Refresh] Price refresh completed:', result);
+
+      // Immediately refetch data to show updated prices and day P&L
+      await fetchData();
+      setRefreshing(false);
     } catch (err: any) {
       console.error('Refresh error:', err);
+      setError('Failed to refresh prices. Please try again.');
       setRefreshing(false);
     }
   };
@@ -210,9 +214,10 @@ export default function EnhancedPortfolioPage() {
               onClick={handleRefresh}
               disabled={refreshing}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-800 text-white rounded text-sm font-medium flex items-center gap-2"
+              title={refreshing ? 'Fetching live prices from Zerodha (~76 seconds)' : 'Click to refresh prices'}
             >
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              {refreshing ? 'Refreshing...' : 'Refresh Prices'}
+              {refreshing ? 'Refreshing (~76s)...' : 'Refresh Prices'}
             </button>
             <Link
               href="/portfolio/sectors"

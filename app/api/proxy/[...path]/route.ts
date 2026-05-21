@@ -74,7 +74,8 @@ export async function POST(
     console.log('[Proxy] POST to:', url);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    // Increase timeout to 120 seconds for refresh endpoint (takes ~76s)
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -121,4 +122,4 @@ export async function POST(
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 60;
+export const maxDuration = 120;
