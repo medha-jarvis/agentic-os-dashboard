@@ -62,6 +62,63 @@ export async function GET(
   }
 }
 
+export async function POST(
+  request: NextRequest,
+  { params }: { params: Promise<{ path: string[] }> }
+) {
+  try {
+    const resolvedParams = await params;
+    const path = resolvedParams.path.join('/');
+    const url = `${API_BASE}/${path}`;
+
+    console.log('[Proxy] POST to:', url);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Vercel-Dashboard/1.0',
+      },
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+
+    console.log('[Proxy] Response status:', response.status);
+
+    if (!response.ok) {
+      throw new Error(`API returned ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('[Proxy] POST completed successfully');
+
+    return NextResponse.json(data, {
+      headers: {
+        'Cache-Control': 'no-store, must-revalidate',
+      },
+    });
+  } catch (error: any) {
+    console.error('[Proxy] POST Error:', {
+      message: error.message,
+      stack: error.stack,
+      url: `${API_BASE}/${(await params).path.join('/')}`,
+    });
+
+    return NextResponse.json(
+      {
+        error: 'Failed to POST to API',
+        details: error.message,
+        apiBase: API_BASE,
+      },
+      { status: 500 }
+    );
+  }
+}
+
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 export const maxDuration = 60;
