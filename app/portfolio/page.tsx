@@ -51,6 +51,12 @@ interface AnnualReturn {
   alpha: number | null;
 }
 
+interface IndexComparison {
+  name: string;
+  twrr: number;
+  terminalValueL: number | null;
+}
+
 const COLORS = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#ec4899','#06b6d4','#84cc16','#f97316','#a855f7'];
 
 const fmt = (n: number, decimals = 2) =>
@@ -79,6 +85,7 @@ export default function PortfolioPage() {
   const [summary, setSummary] = useState<DbSummary | null>(null);
   const [navSeries, setNavSeries] = useState<NavPoint[]>([]);
   const [annualReturns, setAnnualReturns] = useState<AnnualReturn[]>([]);
+  const [indexComparison, setIndexComparison] = useState<IndexComparison[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,6 +106,7 @@ export default function PortfolioPage() {
       setSummary(data.summary || null);
       setNavSeries(data.navSeries || []);
       setAnnualReturns(data.annualReturns || []);
+      setIndexComparison(data.indexComparison || []);
       setLastUpdated(data.lastUpdated || '');
     } catch (err: any) {
       setError(err.message);
@@ -266,6 +274,58 @@ export default function PortfolioPage() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Index Comparison */}
+        {indexComparison.length > 0 && summary && (
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+            <h2 className="text-lg font-bold text-white mb-4">Portfolio vs Indices — TWRR Since Inception (2015)</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-5 gap-3">
+              {/* Portfolio bar */}
+              {[
+                { name: 'Your Portfolio', twrr: summary.twrrAnnualised, terminalValueL: summary.totalValue / 1e5, highlight: true },
+                ...indexComparison
+              ].map(item => {
+                const alpha = item.twrr - (indexComparison[0]?.twrr ?? item.twrr);
+                const isPortfolio = item.name === 'Your Portfolio';
+                const maxTwrr = Math.max(summary.twrrAnnualised, ...indexComparison.map(i => i.twrr));
+                const barPct = Math.round((item.twrr / maxTwrr) * 100);
+                return (
+                  <div key={item.name}
+                    className={`rounded-xl p-4 border ${isPortfolio ? 'border-emerald-500/50 bg-emerald-500/10' : 'border-slate-700 bg-slate-800/50'}`}>
+                    <div className="text-xs font-semibold text-slate-400 mb-2 truncate">{item.name}</div>
+                    <div className={`text-2xl font-bold mb-1 ${isPortfolio ? 'text-emerald-400' : 'text-blue-400'}`}>
+                      {item.twrr >= 0 ? '+' : ''}{item.twrr.toFixed(2)}%
+                    </div>
+                    <div className="text-xs text-slate-500 mb-3">Annualised TWRR</div>
+                    {/* Bar */}
+                    <div className="h-1.5 bg-slate-700 rounded-full mb-3">
+                      <div className={`h-1.5 rounded-full ${isPortfolio ? 'bg-emerald-400' : 'bg-blue-500'}`}
+                        style={{ width: `${barPct}%` }} />
+                    </div>
+                    {item.terminalValueL != null && (
+                      <div className="text-xs text-slate-500">
+                        ₹{item.terminalValueL.toFixed(1)}L if same cashflows
+                      </div>
+                    )}
+                    {isPortfolio && (
+                      <div className="text-xs text-emerald-400 mt-1 font-semibold">
+                        vs best index: +{(summary.twrrAnnualised - Math.max(...indexComparison.map(i=>i.twrr))).toFixed(2)}%
+                      </div>
+                    )}
+                    {!isPortfolio && (
+                      <div className={`text-xs mt-1 font-semibold ${summary.twrrAnnualised > item.twrr ? 'text-emerald-400' : 'text-red-400'}`}>
+                        Portfolio {summary.twrrAnnualised > item.twrr ? '+' : ''}{(summary.twrrAnnualised - item.twrr).toFixed(2)}% alpha
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-xs text-slate-600 mt-3">
+              Same ₹ amount invested/withdrawn on same dates as your transactions, in each index. Midcap 150 data from Apr 2016.
+            </p>
           </div>
         )}
 
