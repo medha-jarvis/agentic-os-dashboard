@@ -12,32 +12,26 @@ export async function GET(
     const searchParams = request.nextUrl.searchParams.toString();
     const url = `${API_BASE}/${path}${searchParams ? `?${searchParams}` : ''}`;
 
-    console.log('[Proxy] Fetching from:', url);
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    console.log('[Proxy GET] Fetching from:', url);
 
     const response = await fetch(url, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Vercel-Dashboard/1.0',
       },
       cache: 'no-store',
-      next: { revalidate: 0 },
-      signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
-    console.log('[Proxy] Response status:', response.status);
+    console.log('[Proxy GET] Response status:', response.status);
 
     if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+      const errorText = await response.text();
+      console.error('[Proxy GET] Error response:', errorText);
+      throw new Error(`API returned ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('[Proxy] Data received successfully');
+    console.log('[Proxy GET] Data received, keys:', Object.keys(data).join(', '));
 
     return NextResponse.json(data, {
       headers: {
@@ -45,10 +39,11 @@ export async function GET(
       },
     });
   } catch (error: any) {
-    console.error('[Proxy] Error details:', {
+    const resolvedParams = await params;
+    console.error('[Proxy GET] Error:', {
       message: error.message,
-      stack: error.stack,
-      url: `${API_BASE}/${(await params).path.join('/')}`,
+      stack: error.stack?.substring(0, 200),
+      url: `${API_BASE}/${resolvedParams.path.join('/')}`,
     });
 
     return NextResponse.json(
@@ -56,6 +51,7 @@ export async function GET(
         error: 'Failed to fetch data from API',
         details: error.message,
         apiBase: API_BASE,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
@@ -71,31 +67,25 @@ export async function POST(
     const path = resolvedParams.path.join('/');
     const url = `${API_BASE}/${path}`;
 
-    console.log('[Proxy] POST to:', url);
-
-    const controller = new AbortController();
-    // Increase timeout to 120 seconds for refresh endpoint (takes ~76s)
-    const timeoutId = setTimeout(() => controller.abort(), 120000);
+    console.log('[Proxy POST] Starting:', url);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Vercel-Dashboard/1.0',
       },
-      signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
-
-    console.log('[Proxy] Response status:', response.status);
+    console.log('[Proxy POST] Response status:', response.status);
 
     if (!response.ok) {
-      throw new Error(`API returned ${response.status}`);
+      const errorText = await response.text();
+      console.error('[Proxy POST] Error response:', errorText);
+      throw new Error(`API returned ${response.status}: ${errorText}`);
     }
 
     const data = await response.json();
-    console.log('[Proxy] POST completed successfully');
+    console.log('[Proxy POST] Completed, received data');
 
     return NextResponse.json(data, {
       headers: {
@@ -103,10 +93,11 @@ export async function POST(
       },
     });
   } catch (error: any) {
-    console.error('[Proxy] POST Error:', {
+    const resolvedParams = await params;
+    console.error('[Proxy POST] Error:', {
       message: error.message,
-      stack: error.stack,
-      url: `${API_BASE}/${(await params).path.join('/')}`,
+      stack: error.stack?.substring(0, 200),
+      url: `${API_BASE}/${resolvedParams.path.join('/')}`,
     });
 
     return NextResponse.json(
@@ -114,6 +105,7 @@ export async function POST(
         error: 'Failed to POST to API',
         details: error.message,
         apiBase: API_BASE,
+        timestamp: new Date().toISOString(),
       },
       { status: 500 }
     );
@@ -122,4 +114,4 @@ export async function POST(
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-export const maxDuration = 120;
+export const maxDuration = 300; // 5 minutes for long operations

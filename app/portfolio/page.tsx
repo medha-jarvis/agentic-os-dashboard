@@ -6,9 +6,9 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine
 } from 'recharts';
-import { RefreshCw, TrendingUp, TrendingDown, Activity, BarChart2, Database } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, Activity, BarChart2, Database, Home } from 'lucide-react';
 
-type SortColumn = 'stock' | 'qty' | 'pct' | 'invested' | 'avgPrice' | 'currentPrice' | 'value' | 'pl' | 'returns' | 'irr';
+type SortColumn = 'stock' | 'qty' | 'pct' | 'invested' | 'avgPrice' | 'currentPrice' | 'value' | 'pl' | 'returns' | 'irr' | 'dayChange' | 'dayChangePct';
 type SortDirection = 'asc' | 'desc';
 
 interface DbHolding {
@@ -16,6 +16,9 @@ interface DbHolding {
   qty: number;
   avgPrice: number;
   currentPrice: number;
+  prevClose: number | null;
+  dayChange: number | null;
+  dayChangePct: number | null;
   invested: number;
   currentValue: number;
   gainLoss: number;
@@ -34,6 +37,8 @@ interface DbSummary {
   twrrPeriods: { '1yr': number | null; '3yr': number | null; '5yr': number | null; inception: number };
   holdingsCount: number;
   latestNAV: number | null;
+  totalDayChange: number | null;
+  totalDayChangePct: number | null;
 }
 
 interface NavPoint {
@@ -147,6 +152,8 @@ export default function PortfolioPage() {
       case 'pl': return d * (a.gainLoss - b.gainLoss);
       case 'returns': return d * (a.gainPct - b.gainPct);
       case 'irr': return d * ((a.irr ?? -999) - (b.irr ?? -999));
+      case 'dayChange': return d * ((a.dayChange ?? -Infinity) - (b.dayChange ?? -Infinity));
+      case 'dayChangePct': return d * ((a.dayChangePct ?? -Infinity) - (b.dayChangePct ?? -Infinity));
       default: return 0;
     }
   });
@@ -207,6 +214,10 @@ export default function PortfolioPage() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3">
+            <Link href="/" className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded text-sm font-medium flex items-center gap-2">
+              <Home className="w-4 h-4" />
+              Agentic OS
+            </Link>
             <button onClick={handleRefresh} disabled={refreshing}
               className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded text-sm font-medium flex items-center gap-2">
               <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
@@ -429,6 +440,8 @@ export default function PortfolioPage() {
                   <Th col="invested" label="Invested" />
                   <Th col="avgPrice" label="Avg ₹" />
                   <Th col="currentPrice" label="CMP ₹" />
+                  <Th col="dayChange" label="1D ₹" />
+                  <Th col="dayChangePct" label="1D %" />
                   <Th col="value" label="Value" />
                   <Th col="pl" label="P&L" />
                   <Th col="returns" label="Gain %" />
@@ -448,6 +461,12 @@ export default function PortfolioPage() {
                     <td className="text-right p-2 text-slate-300">{fmt(h.invested)}</td>
                     <td className="text-right p-2 text-slate-400">₹{h.avgPrice.toLocaleString()}</td>
                     <td className="text-right p-2 text-slate-300">₹{h.currentPrice.toLocaleString()}</td>
+                    <td className={`text-right p-2 font-medium text-xs ${h.dayChange == null ? 'text-slate-500' : h.dayChange >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {h.dayChange != null ? `${h.dayChange >= 0 ? '+' : ''}${fmt(h.dayChange)}` : '—'}
+                    </td>
+                    <td className={`text-right p-2 font-medium text-xs ${h.dayChangePct == null ? 'text-slate-500' : h.dayChangePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {h.dayChangePct != null ? `${h.dayChangePct >= 0 ? '+' : ''}${h.dayChangePct.toFixed(2)}%` : '—'}
+                    </td>
                     <td className="text-right p-2 text-white font-medium">{fmt(h.currentValue)}</td>
                     <td className={`text-right p-2 font-medium ${h.gainLoss >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                       {h.gainLoss >= 0 ? '+' : ''}{fmt(h.gainLoss)}
@@ -464,18 +483,33 @@ export default function PortfolioPage() {
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-slate-600 bg-slate-800/50">
-                  <td className="p-2 font-bold text-white text-xs" colSpan={3}>TOTAL ({holdings.length} stocks)</td>
-                  <td className="text-right p-2 font-bold text-white">{summary ? fmt(summary.totalInvested) : ''}</td>
-                  <td colSpan={2} />
-                  <td className="text-right p-2 font-bold text-emerald-400">{summary ? fmt(summary.totalValue) : ''}</td>
-                  <td className={`text-right p-2 font-bold ${(summary?.totalGain ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                <tr className="border-t-2 border-slate-500 bg-slate-800/70 text-xs font-bold">
+                  <td className="p-2 text-white">TOTAL ({holdings.length})</td>
+                  <td />
+                  <td />
+                  <td className="text-right p-2 text-white">{summary ? fmt(summary.totalInvested) : ''}</td>
+                  <td />
+                  <td />
+                  {/* 1D ₹ total */}
+                  <td className={`text-right p-2 ${(summary?.totalDayChange ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {summary?.totalDayChange != null ? `${summary.totalDayChange >= 0 ? '+' : ''}${fmt(summary.totalDayChange)}` : '—'}
+                  </td>
+                  {/* 1D % total */}
+                  <td className={`text-right p-2 ${(summary?.totalDayChangePct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {summary?.totalDayChangePct != null ? `${summary.totalDayChangePct >= 0 ? '+' : ''}${summary.totalDayChangePct.toFixed(2)}%` : '—'}
+                  </td>
+                  {/* Current Value */}
+                  <td className="text-right p-2 text-emerald-400">{summary ? fmt(summary.totalValue) : ''}</td>
+                  {/* Overall P&L */}
+                  <td className={`text-right p-2 ${(summary?.totalGain ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {summary ? fmt(summary.totalGain) : ''}
                   </td>
-                  <td className={`text-right p-2 font-bold ${(summary?.gainPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                  {/* Gain % */}
+                  <td className={`text-right p-2 ${(summary?.gainPct ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                     {pct(summary?.gainPct ?? null)}
                   </td>
-                  <td className="text-right p-2 text-xs font-bold text-blue-400">
+                  {/* XIRR */}
+                  <td className="text-right p-2 text-blue-400">
                     XIRR: {summary?.xirr != null ? `${summary.xirr.toFixed(2)}%` : '—'}
                   </td>
                 </tr>
