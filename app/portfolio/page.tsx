@@ -21,6 +21,7 @@ interface DbHolding {
   invested:number; currentValue:number; gainLoss:number; gainPct:number;
   irr:number|null; duration:number|null; portfolioPct:number; signal:string|null;
   sector:string; marketCap:string;
+  totalPnl:number; totalPnlPct:number; hasExits:boolean;
 }
 interface BenchPair { sensex:number|null; nifty500:number|null; }
 interface DbSummary {
@@ -297,7 +298,7 @@ export default function PortfolioPage() {
       case 'currentPrice': return d*(a.currentPrice-b.currentPrice);
       case 'value':        return d*(a.currentValue-b.currentValue);
       case 'pl':           return d*(a.gainLoss-b.gainLoss);
-      case 'returns':      return d*(a.gainPct-b.gainPct);
+      case 'returns':      return d*(a.totalPnlPct-b.totalPnlPct);
       case 'irr':          return d*((a.irr??-999)-(b.irr??-999));
       case 'duration':     return d*((a.duration??-999)-(b.duration??-999));
       case 'dayChange':    return d*((a.dayChange??-Infinity)-(b.dayChange??-Infinity));
@@ -601,7 +602,7 @@ export default function PortfolioPage() {
                   <Th col="currentPrice" label="CMP ₹"/>
                   <Th col="value"        label="Value"/>
                   <Th col="pl"           label="P&L"/>
-                  <Th col="returns"      label="Gain%"/>
+                  <Th col="returns"      label="Return%†"/>
                   <Th col="irr"          label="IRR%"/>
                   <Th col="duration"     label="Duration"/>
                   <Th col="dayChange"    label="1D ₹"/>
@@ -627,7 +628,10 @@ export default function PortfolioPage() {
                     <td className={`text-right px-2 py-2 font-medium whitespace-nowrap ${h.gainLoss>=0?'text-emerald-400':'text-red-400'}`}>
                       {h.gainLoss>=0?'+':''}{nfmt(h.gainLoss)}
                     </td>
-                    <td className={`text-right px-2 py-2 font-bold whitespace-nowrap ${h.gainPct>=0?'text-emerald-400':'text-red-400'}`}>{pct(h.gainPct)}</td>
+                    <td className={`text-right px-2 py-2 font-bold whitespace-nowrap ${h.totalPnlPct>=0?'text-emerald-400':'text-red-400'}`}>
+                      <div>{pct(h.totalPnlPct)}</div>
+                      {h.hasExits && <div className="text-slate-500 font-normal" style={{fontSize:'9px'}}>unreal: {pct(h.gainPct)}</div>}
+                    </td>
                     <td className={`text-right px-2 py-2 whitespace-nowrap ${irrBg(h.irr)}`}>
                       <span className={irrColor(h.irr)}>{h.irr!=null?`${h.irr>=0?'+':''}${h.irr.toFixed(1)}%`:'—'}</span>
                     </td>
@@ -654,7 +658,7 @@ export default function PortfolioPage() {
                   <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalGain??0)>=0?'text-emerald-400':'text-red-400'}`}>
                     {summary?`${summary.totalGain>=0?'+':''}${nfmt(summary.totalGain)}`:''}
                   </td>
-                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.gainPct??0)>=0?'text-emerald-400':'text-red-400'}`}>{pct(summary?.gainPct??null)}</td>
+                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.gainPct??0)>=0?'text-emerald-400':'text-red-400'}`}>{pct(summary?.gainPct??null)} <span className="text-slate-600 font-normal text-xs">unreal</span></td>
                   <td className="text-right px-2 py-2 text-blue-400 whitespace-nowrap">XIRR: {summary?.xirr!=null?`${summary.xirr.toFixed(2)}%`:'—'}</td>
                   <td/>
                   <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalDayChange??0)>=0?'text-emerald-400':'text-red-400'}`}>
@@ -668,7 +672,9 @@ export default function PortfolioPage() {
               </tfoot>
             </table>
           </div>
-          <div className="mt-1.5 text-xs text-slate-600 text-right">Action from wiki · IRR = annualised since first purchase{normalized?' · All ₹ values normalised to ₹1Cr':''}</div>
+          <div className="mt-1.5 text-xs text-slate-600 text-right">
+            † Return% = true total return incl. realized gains/losses · stocks with exits show unrealised% in smaller text below · IRR = annualised{normalized?' · Normalised to ₹1Cr':''}
+          </div>
         </div>
 
         {/* ══ PORTFOLIO ANALYTICS ══ */}
