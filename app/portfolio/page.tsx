@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import Link from 'next/link';
 import {
   LineChart, Line, BarChart, Bar, Cell,
@@ -66,6 +66,170 @@ const SignalBadge = ({signal}:{signal:string|null}) => {
 
 const SECTOR_COLORS = ['#10b981','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#ec4899','#14b8a6','#f97316','#06b6d4','#84cc16','#a855f7','#64748b','#22d3ee','#fb923c'];
 const MCAP_COLORS   = {  'Large Cap':'#3b82f6', 'Mid Cap':'#10b981', 'Small Cap':'#f59e0b' };
+
+// ─────────────────────────────────────────────────────────
+// Custom Interactive Treemap
+// Binary-partition layout (alternating H/V slices)
+// Hover tooltip, smooth transitions, Nunito font
+// ─────────────────────────────────────────────────────────
+
+interface TmNode { symbol:string; currentValue:number; gainPct:number; irr:number|null; duration:number|null; portfolioPct:number; sector:string; signal:string|null; }
+interface TmRect { x:number; y:number; w:number; h:number; node:TmNode; }
+
+function buildLayout(nodes:TmNode[], x:number, y:number, w:number, h:number, horiz:boolean): TmRect[] {
+  if (!nodes.length) return [];
+  if (nodes.length === 1) return [{x,y,w,h,node:nodes[0]}];
+  const tot = nodes.reduce((s,n)=>s+n.currentValue,0);
+  let cum=0, split=0;
+  for (let i=0;i<nodes.length;i++) {
+    if (cum+nodes[i].currentValue > tot/2 && i>0) break;
+    cum+=nodes[i].currentValue; split=i+1;
+  }
+  const left=nodes.slice(0,split), right=nodes.slice(split), r=cum/tot;
+  if (horiz) {
+    return [...buildLayout(left,x,y,w*r,h,!horiz), ...buildLayout(right,x+w*r,y,w*(1-r),h,!horiz)];
+  }
+  return [...buildLayout(left,x,y,w,h*r,!horiz), ...buildLayout(right,x,y+h*r,w,h*(1-r),!horiz)];
+}
+
+const GAIN_FILL = (g:number) =>
+  g>=100?'#065f46':g>=50?'#059669':g>=25?'#10b981':g>=10?'#34d399':g>=0?'#86efac':g>=-10?'#fb923c':'#ef4444';
+
+const GAIN_TEXT = (g:number) =>
+  (g>=0&&g<12)||(g<0&&g>-8) ? '#1e293b' : '#ffffff';
+
+function PortfolioTreemap({ data, nfmt }:{ data:TmNode[]; nfmt:(n:number)=>string }) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [size, setSize] = useState({w:800,h:290});
+  const [hov, setHov] = useState<string|null>(null);
+  const [tip, setTip] = useState<{px:number; py:number; node:TmNode}|null>(null);
+
+  useEffect(()=>{
+    const ro = new ResizeObserver(es=>{
+      const w = es[0].contentRect.width;
+      setSize({w, h: Math.max(220, Math.round(w*0.34))});
+    });
+    if (wrapRef.current) ro.observe(wrapRef.current);
+    return ()=>ro.disconnect();
+  },[]);
+
+  const sorted = [...data].sort((a,b)=>b.currentValue-a.currentValue);
+  const rects  = buildLayout(sorted, 2, 2, size.w-4, size.h-4, true);
+
+  const handleEnter = useCallback((e:React.MouseEvent<SVGGElement>, node:TmNode, r:TmRect)=>{
+    setHov(node.symbol);
+    const svgRect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
+    const wrapRect = wrapRef.current!.getBoundingClientRect();
+    const px = r.x + r.w/2;
+    const py = r.y + r.h/2;
+    setTip({px, py, node});
+  },[]);
+
+  return (
+    <div ref={wrapRef} style={{width:'100%',position:'relative',fontFamily:'Nunito, Inter, system-ui, sans-serif'}}>
+      <svg width={size.w} height={size.h} style={{display:'block',borderRadius:8}}
+        onMouseLeave={()=>{setHov(null);setTip(null);}}>
+        {rects.map(r=>{
+          const {node:n} = r;
+          const isHov = hov===n.symbol;
+          const fill  = GAIN_FILL(n.gainPct);
+          const textC = GAIN_TEXT(n.gainPct);
+          const rw=r.w-2, rh=r.h-2;
+          const cx=r.x+r.w/2, cy=r.y+r.h/2;
+          const fs  = Math.min(13, Math.max(7.5, rw/5.5));
+          const fs2 = Math.max(6.5, fs*0.78);
+          const fs3 = Math.max(6, fs*0.65);
+          const showTicker = rw>32 && rh>20;
+          const showGain   = rw>28 && rh>35;
+          const showIrr    = rw>48 && rh>50 && n.irr!=null;
+          const lines = (showTicker?1:0)+(showGain?1:0)+(showIrr?1:0);
+          const totalH = lines===3?fs+fs2+fs3+4:lines===2?fs+fs2+2:fs;
+          const topY   = cy - totalH/2 + fs/2;
+
+          return (
+            <g key={n.symbol} style={{cursor:'pointer'}}
+              onMouseEnter={e=>handleEnter(e,n,r)}
+              onMouseLeave={()=>{setHov(null);setTip(null);}}>
+              <rect
+                x={r.x+1} y={r.y+1} width={Math.max(0,rw)} height={Math.max(0,rh)}
+                fill={fill} rx={4}
+                stroke={isHov?'rgba(255,255,255,0.75)':'#0f172a'}
+                strokeWidth={isHov?2:0.75}
+                opacity={isHov?1:hov?0.72:0.92}
+                style={{transition:'opacity 0.18s, stroke 0.18s, stroke-width 0.18s'}}
+              />
+              {/* Subtle inner glow on hover */}
+              {isHov && <rect x={r.x+2} y={r.y+2} width={Math.max(0,rw-2)} height={Math.max(0,rh-2)} fill="none" rx={3} stroke="rgba(255,255,255,0.18)" strokeWidth={1}/>}
+
+              {showTicker && <text
+                x={cx} y={topY}
+                textAnchor="middle" dominantBaseline="middle"
+                fill={textC} fontSize={fs} fontWeight="800"
+                fontFamily="Nunito, Inter, sans-serif" letterSpacing="-0.3"
+                style={{pointerEvents:'none',userSelect:'none'}}>
+                {n.symbol}
+              </text>}
+
+              {showGain && <text
+                x={cx} y={topY+(showTicker?fs+2:0)}
+                textAnchor="middle" dominantBaseline="middle"
+                fill={showTicker?`${textC}cc`:textC} fontSize={fs2} fontWeight="700"
+                fontFamily="Nunito, Inter, sans-serif"
+                style={{pointerEvents:'none',userSelect:'none'}}>
+                {n.gainPct>=0?'+':''}{n.gainPct.toFixed(1)}%
+              </text>}
+
+              {showIrr && <text
+                x={cx} y={topY+(showTicker?fs+2:0)+(showGain?fs2+2:0)}
+                textAnchor="middle" dominantBaseline="middle"
+                fill={`${textC}88`} fontSize={fs3} fontWeight="600"
+                fontFamily="Nunito, Inter, sans-serif"
+                style={{pointerEvents:'none',userSelect:'none'}}>
+                IRR {(n.irr??0)>=0?'+':''}{(n.irr??0).toFixed(0)}%
+              </text>}
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Floating tooltip */}
+      {tip && (
+        <div style={{
+          position:'absolute',
+          left: Math.min(tip.px+12, size.w-210),
+          top:  Math.max(4, tip.py-80),
+          zIndex:50, pointerEvents:'none',
+          fontFamily:'Nunito, Inter, sans-serif',
+        }}
+          className="bg-slate-900/95 backdrop-blur-sm border border-slate-600/60 rounded-xl p-3 w-52 shadow-2xl">
+          <div className="flex items-center justify-between mb-2">
+            <span className="font-extrabold text-white text-sm tracking-tight">{tip.node.symbol}</span>
+            {tip.node.signal && (
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${SIGNAL_CFG[tip.node.signal]?.bg??'bg-blue-500/20'} ${SIGNAL_CFG[tip.node.signal]?.text??'text-blue-400'}`}>
+                {tip.node.signal}
+              </span>
+            )}
+          </div>
+          <div className="text-xs text-slate-400 mb-2 truncate">{tip.node.sector}</div>
+          <div className="space-y-1 text-xs">
+            {[
+              {l:'Value',   v: nfmt(tip.node.currentValue), c:'text-white font-semibold'},
+              {l:'Weight',  v: `${tip.node.portfolioPct.toFixed(1)}%`, c:'text-white'},
+              {l:'Gain',    v: `${tip.node.gainPct>=0?'+':''}${tip.node.gainPct.toFixed(1)}%`,    c:tip.node.gainPct>=0?'text-emerald-400 font-semibold':'text-red-400 font-semibold'},
+              tip.node.irr!=null?{l:'IRR', v:`${tip.node.irr>=0?'+':''}${tip.node.irr.toFixed(1)}%`, c:tip.node.irr>=15?'text-emerald-400':tip.node.irr>=0?'text-yellow-400':'text-red-400'}:null,
+              tip.node.duration!=null?{l:'Duration', v:`${tip.node.duration.toFixed(1)}y`, c:'text-slate-300'}:null,
+            ].filter(Boolean).map((row:any)=>(
+              <div key={row.l} className="flex justify-between items-center">
+                <span className="text-slate-400">{row.l}</span>
+                <span className={row.c}>{row.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PortfolioPage() {
   const [holdings,        setHoldings]        = useState<DbHolding[]>([]);
@@ -526,35 +690,15 @@ export default function PortfolioPage() {
               ))}
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={260}>
-          <Treemap
-            data={[...holdings].sort((a,b)=>b.currentValue-a.currentValue).map(h=>({
-              name:h.symbol, size:h.currentValue,
-              gainPct:h.gainPct, irr:h.irr, portfolioPct:h.portfolioPct,
-              sector:h.sector,
+          <PortfolioTreemap
+            data={holdings.map(h=>({
+              symbol:h.symbol, currentValue:h.currentValue,
+              gainPct:h.gainPct, irr:h.irr, duration:h.duration,
+              portfolioPct:h.portfolioPct, sector:h.sector, signal:h.signal,
             }))}
-            dataKey="size"
-            stroke="#0f172a"
-            content={(props:any)=>{
-              const {x,y,width,height,name,gainPct,irr,portfolioPct} = props;
-              if(!width||!height||width<18||height<14) return <g/>;
-              const g = gainPct??0;
-              const bg = g>=100?'#065f46':g>=50?'#059669':g>=25?'#10b981':g>=10?'#34d399':g>=0?'#6ee7b7':g>=-10?'#fb923c':'#ef4444';
-              const showName = width>40&&height>26;
-              const showGain = width>36&&height>38;
-              const showIrr  = width>55&&height>52&&irr!=null;
-              return (
-                <g>
-                  <rect x={x+1} y={y+1} width={width-2} height={height-2} fill={bg} rx={3}/>
-                  {showName&&<text x={x+width/2} y={y+height/2-(showGain?9:3)} textAnchor="middle" fill={g<10&&g>=-10?'#1e293b':'white'} fontSize={Math.min(11,width/4.5)} fontWeight="700">{name}</text>}
-                  {showGain&&<text x={x+width/2} y={y+height/2+(showName?6:3)} textAnchor="middle" fill={g<10&&g>=-10?'#1e293b':'rgba(255,255,255,0.9)'} fontSize={Math.min(9,width/5.5)}>{g>=0?'+':''}{g.toFixed(1)}%</text>}
-                  {showIrr&&<text x={x+width/2} y={y+height/2+20} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={Math.min(8,width/7)}>IRR {(irr??0)>=0?'+':''}{(irr??0).toFixed(0)}%</text>}
-                </g>
-              );
-            }}
+            nfmt={nfmt}
           />
-          </ResponsiveContainer>
-          <p className="text-xs text-slate-600 mt-2 text-right">Hover over table rows · Treemap = size-weighted portfolio visualisation</p>
+          <p className="text-xs text-slate-600 mt-1.5 text-right">Hover any cell for full details · Size = value · Colour = return</p>
         </div>
 
         {/* ── Chart 2 & 3: Sector Allocation + Sector Scorecard ── */}
