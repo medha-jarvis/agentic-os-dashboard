@@ -11,21 +11,30 @@ import {
 import { RefreshCw, BarChart2, Database, Home, EyeOff, Eye } from 'lucide-react';
 
 type SortColumn = 'stock'|'qty'|'pct'|'invested'|'avgPrice'|'currentPrice'|
-  'value'|'pl'|'returns'|'irr'|'duration'|'dayChange'|'dayChangePct'|'signal';
+  'value'|'realizedPl'|'pl'|'returns'|'irr'|'duration'|'dayChange'|'dayChangePct'|'signal';
 type SortDir  = 'asc'|'desc';
 type CompPeriod = 'inception'|'2020';
 
 interface DbHolding {
   symbol:string; qty:number; avgPrice:number; currentPrice:number;
   prevClose:number|null; dayChange:number|null; dayChangePct:number|null;
-  invested:number; currentValue:number; gainLoss:number; gainPct:number;
+  invested:number; netInvested:number; currentValue:number;
+  gainLoss:number; gainPct:number;
+  realizedPnl:number; unrealizedPnl:number;
   irr:number|null; duration:number|null; portfolioPct:number; signal:string|null;
   sector:string; marketCap:string;
   totalPnl:number; totalPnlPct:number; hasExits:boolean;
 }
+interface ClosedPositions {
+  count:number; grossInvested:number; grossSellProceeds:number;
+  realizedPnl:number; netInvested:number;
+}
 interface BenchPair { sensex:number|null; nifty500:number|null; }
 interface DbSummary {
   totalInvested:number; totalValue:number; totalGain:number; gainPct:number;
+  totalNetInvested:number; totalRealizedPnl:number; totalUnrealizedPnl:number;
+  totalPnlAll:number; totalPnlPctAll:number;
+  closedPositions?:ClosedPositions;
   xirr:number|null; twrrAnnualised:number; twrrAnnualised2020:number|null;
   twrrPeriods:{'1yr':number|null;'2yr':number|null;'3yr':number|null;'5yr':number|null;inception:number;since2020:number|null};
   benchmarkPeriods:{'1yr':BenchPair;'2yr':BenchPair;'3yr':BenchPair;'5yr':BenchPair;since2020:BenchPair;inception:BenchPair};
@@ -297,7 +306,8 @@ export default function PortfolioPage() {
       case 'avgPrice':     return d*(a.avgPrice-b.avgPrice);
       case 'currentPrice': return d*(a.currentPrice-b.currentPrice);
       case 'value':        return d*(a.currentValue-b.currentValue);
-      case 'pl':           return d*(a.gainLoss-b.gainLoss);
+      case 'realizedPl':   return d*((a.realizedPnl??0)-(b.realizedPnl??0));
+      case 'pl':           return d*(a.totalPnl-b.totalPnl);
       case 'returns':      return d*(a.totalPnlPct-b.totalPnlPct);
       case 'irr':          return d*((a.irr??-999)-(b.irr??-999));
       case 'duration':     return d*((a.duration??-999)-(b.duration??-999));
@@ -588,7 +598,7 @@ export default function PortfolioPage() {
             <div className="text-xs text-slate-500 hidden sm:block">Click headers to sort</div>
           </div>
           <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-xs border-collapse" style={{minWidth:'960px'}}>
+            <table className="w-full text-xs border-collapse" style={{minWidth:'1200px'}}>
               <thead>
                 <tr className="border-b border-slate-700">
                   <th className="sticky left-0 bg-slate-900 text-left px-2 py-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-white whitespace-nowrap z-10"
@@ -597,11 +607,13 @@ export default function PortfolioPage() {
                   </th>
                   <Th col="qty"          label="Qty"/>
                   <Th col="pct"          label="Port%"/>
-                  <Th col="invested"     label="Invested"/>
+                  <Th col="invested"     label="Net Invested"/>
                   <Th col="avgPrice"     label="Avg ₹"/>
                   <Th col="currentPrice" label="CMP ₹"/>
                   <Th col="value"        label="Value"/>
-                  <Th col="pl"           label="P&L"/>
+                  <Th col="realizedPl"   label="Realized P&L"/>
+                  <Th col="pl"           label="Unrealized P&L"/>
+                  <Th col="pl"           label="Total P&L"/>
                   <Th col="returns"      label="Return%†"/>
                   <Th col="irr"          label="IRR%"/>
                   <Th col="duration"     label="Duration"/>
@@ -621,12 +633,18 @@ export default function PortfolioPage() {
                     </td>
                     <td className="text-right px-2 py-2 text-slate-300 whitespace-nowrap">{h.qty.toLocaleString()}</td>
                     <td className="text-right px-2 py-2 text-slate-400 whitespace-nowrap">{h.portfolioPct.toFixed(1)}%</td>
-                    <td className="text-right px-2 py-2 text-slate-300 whitespace-nowrap">{nfmt(h.invested)}</td>
+                    <td className="text-right px-2 py-2 text-slate-300 whitespace-nowrap">{nfmt(h.netInvested??h.invested)}</td>
                     <td className="text-right px-2 py-2 text-slate-400 whitespace-nowrap">₹{h.avgPrice.toLocaleString()}</td>
                     <td className="text-right px-2 py-2 text-slate-300 whitespace-nowrap">₹{h.currentPrice.toLocaleString()}</td>
                     <td className="text-right px-2 py-2 text-white font-medium whitespace-nowrap">{nfmt(h.currentValue)}</td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap ${!h.realizedPnl?'text-slate-600':h.realizedPnl>=0?'text-emerald-400':'text-red-400'}`}>
+                      {h.realizedPnl ? `${h.realizedPnl>=0?'+':''}${nfmt(h.realizedPnl)}` : '—'}
+                    </td>
                     <td className={`text-right px-2 py-2 font-medium whitespace-nowrap ${h.gainLoss>=0?'text-emerald-400':'text-red-400'}`}>
                       {h.gainLoss>=0?'+':''}{nfmt(h.gainLoss)}
+                    </td>
+                    <td className={`text-right px-2 py-2 font-semibold whitespace-nowrap ${h.totalPnl>=0?'text-emerald-400':'text-red-400'}`}>
+                      {h.totalPnl>=0?'+':''}{nfmt(h.totalPnl)}
                     </td>
                     <td className={`text-right px-2 py-2 font-bold whitespace-nowrap ${h.totalPnlPct>=0?'text-emerald-400':'text-red-400'}`}>
                       <div>{pct(h.totalPnlPct)}</div>
@@ -647,18 +665,51 @@ export default function PortfolioPage() {
                     <td className="text-center px-2 py-2 whitespace-nowrap"><SignalBadge signal={h.signal}/></td>
                   </tr>
                 ))}
+                {/* Closed positions summary row */}
+                {summary?.closedPositions && (
+                  <tr className="border-t border-dashed border-slate-600 bg-slate-800/30 italic text-slate-400">
+                    <td className="sticky left-0 bg-slate-850 px-2 py-2 z-10 whitespace-nowrap">
+                      <div className="text-slate-400 text-xs font-medium">Closed Positions</div>
+                      <div className="text-slate-600" style={{fontSize:'10px'}}>{summary.closedPositions.count} exited stocks</div>
+                    </td>
+                    <td/><td/>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap text-xs font-medium ${(summary.closedPositions.netInvested??0)<=0?'text-emerald-400':'text-slate-400'}`}>
+                      {nfmt(summary.closedPositions.netInvested)}
+                    </td>
+                    <td/><td/><td/>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap font-semibold ${summary.closedPositions.realizedPnl>=0?'text-emerald-400':'text-red-400'}`}>
+                      {summary.closedPositions.realizedPnl>=0?'+':''}{nfmt(summary.closedPositions.realizedPnl)}
+                    </td>
+                    <td className="text-right px-2 py-2 text-slate-600 whitespace-nowrap">—</td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap font-semibold ${summary.closedPositions.realizedPnl>=0?'text-emerald-400':'text-red-400'}`}>
+                      {summary.closedPositions.realizedPnl>=0?'+':''}{nfmt(summary.closedPositions.realizedPnl)}
+                    </td>
+                    <td className={`text-right px-2 py-2 text-xs whitespace-nowrap ${summary.closedPositions.realizedPnl>=0?'text-emerald-400':'text-red-400'}`}>
+                      {pct(summary.closedPositions.grossInvested>0?summary.closedPositions.realizedPnl/summary.closedPositions.grossInvested*100:null)}
+                    </td>
+                    <td/><td/><td/><td/>
+                  </tr>
+                )}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-slate-500 bg-slate-800/70 font-bold">
                   <td className="sticky left-0 bg-slate-800 px-2 py-2 text-white whitespace-nowrap z-10">TOTAL ({holdings.length})</td>
                   <td/><td/>
-                  <td className="text-right px-2 py-2 text-white whitespace-nowrap">{summary?nfmt(summary.totalInvested):''}</td>
+                  <td className="text-right px-2 py-2 text-white whitespace-nowrap">{summary?nfmt(summary.totalNetInvested??summary.totalInvested):''}</td>
                   <td/><td/>
                   <td className="text-right px-2 py-2 text-emerald-400 whitespace-nowrap">{summary?nfmt(summary.totalValue):''}</td>
-                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalGain??0)>=0?'text-emerald-400':'text-red-400'}`}>
-                    {summary?`${summary.totalGain>=0?'+':''}${nfmt(summary.totalGain)}`:''}
+                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalRealizedPnl??0)>=0?'text-emerald-400':'text-red-400'}`}>
+                    {summary?`${(summary.totalRealizedPnl??0)>=0?'+':''}${nfmt(summary.totalRealizedPnl??0)}`:''}
                   </td>
-                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.gainPct??0)>=0?'text-emerald-400':'text-red-400'}`}>{pct(summary?.gainPct??null)} <span className="text-slate-600 font-normal text-xs">unreal</span></td>
+                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalUnrealizedPnl??0)>=0?'text-emerald-400':'text-red-400'}`}>
+                    {summary?`${(summary.totalUnrealizedPnl??0)>=0?'+':''}${nfmt(summary.totalUnrealizedPnl??0)}`:''}
+                  </td>
+                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalPnlAll??0)>=0?'text-emerald-400':'text-red-400'}`}>
+                    {summary?`${(summary.totalPnlAll??0)>=0?'+':''}${nfmt(summary.totalPnlAll??0)}`:''}
+                  </td>
+                  <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalPnlPctAll??0)>=0?'text-emerald-400':'text-red-400'}`}>
+                    {pct(summary?.totalPnlPctAll??null)} <span className="text-slate-600 font-normal text-xs">on net</span>
+                  </td>
                   <td className="text-right px-2 py-2 text-blue-400 whitespace-nowrap">XIRR: {summary?.xirr!=null?`${summary.xirr.toFixed(2)}%`:'—'}</td>
                   <td/>
                   <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalDayChange??0)>=0?'text-emerald-400':'text-red-400'}`}>
