@@ -390,15 +390,15 @@ export default function PortfolioPage() {
         {summary && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
-              { label:'Portfolio Value',  val: nfmt(summary.totalValue),  sub: `Invested: ${nfmt(summary.totalInvested)}`, color:'text-emerald-400' },
+              { label:'Portfolio Value',  val: nfmt(summary.totalValue),  sub: `Net Invested: ${nfmt(summary.totalNetInvested??summary.totalInvested)}`, color:'text-emerald-400' },
               { label:"Today's P&L",
                 val: summary.totalDayChange!=null?`${summary.totalDayChange>=0?'+':''}${nfmt(summary.totalDayChange)}`:'—',
                 sub: pct(summary.totalDayChangePct),
                 color: (summary.totalDayChange??0)>=0?'text-emerald-400':'text-red-400' },
               { label:'Overall Gain',
-                val: `${summary.totalGain>=0?'+':''}${nfmt(summary.totalGain)}`,
-                sub: pct(summary.gainPct),
-                color: summary.totalGain>=0?'text-emerald-400':'text-red-400' },
+                val: `${(summary.totalPnlAll??summary.totalGain)>=0?'+':''}${nfmt(summary.totalPnlAll??summary.totalGain)}`,
+                sub: pct(summary.totalPnlPctAll??summary.gainPct),
+                color: (summary.totalPnlAll??summary.totalGain)>=0?'text-emerald-400':'text-red-400' },
               { label:'XIRR (Money-Weighted)',
                 val: pct(summary.xirr),
                 sub: `TWRR (inception): ${pct(summary.twrrPeriods.inception)}`,
