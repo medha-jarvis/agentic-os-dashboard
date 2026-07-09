@@ -11,7 +11,8 @@ import {
 import { RefreshCw, BarChart2, Database, Home, EyeOff, Eye } from 'lucide-react';
 
 type SortColumn = 'stock'|'qty'|'pct'|'invested'|'avgPrice'|'currentPrice'|
-  'value'|'realizedPl'|'pl'|'returns'|'irr'|'duration'|'dayChange'|'dayChangePct'|'signal';
+  'value'|'realizedPl'|'pl'|'returns'|'irr'|'duration'|'dayChange'|'dayChangePct'|'signal'|
+  'week52High'|'week52Low'|'pctFrom52H'|'pctFrom52L'|'pe'|'medianPe'|'pb'|'evEbitda'|'divYield'|'roe'|'mcap';
 type SortDir  = 'asc'|'desc';
 type CompPeriod = 'inception'|'2020';
 
@@ -24,25 +25,31 @@ interface DbHolding {
   irr:number|null; duration:number|null; portfolioPct:number; signal:string|null;
   sector:string; marketCap:string;
   totalPnl:number; totalPnlPct:number; hasExits:boolean;
+  // Valuation
+  week52High?:number|null; week52Low?:number|null;
+  pctFrom52High?:number|null; pctFrom52Low?:number|null;
+  trailingPE?:number|null; medianPE5yr?:number|null;
+  pb?:number|null; evEbitda?:number|null;
+  divYield?:number|null; roe?:number|null; marketCapCr?:number|null;
 }
 interface ClosedPositions {
   count:number; grossInvested:number; grossSellProceeds:number;
   realizedPnl:number; netInvested:number;
 }
-interface BenchPair { sensex:number|null; nifty500:number|null; }
+interface BenchPair { sensex:number|null; nifty500:number|null; midcap?:number|null; smallcap?:number|null; }
 interface DbSummary {
   totalInvested:number; totalValue:number; totalGain:number; gainPct:number;
   totalNetInvested:number; totalRealizedPnl:number; totalUnrealizedPnl:number;
   totalPnlAll:number; totalPnlPctAll:number;
   closedPositions?:ClosedPositions;
   xirr:number|null; twrrAnnualised:number; twrrAnnualised2020:number|null;
-  twrrPeriods:{'1yr':number|null;'2yr':number|null;'3yr':number|null;'5yr':number|null;inception:number;since2020:number|null};
-  benchmarkPeriods:{'1yr':BenchPair;'2yr':BenchPair;'3yr':BenchPair;'5yr':BenchPair;since2020:BenchPair;inception:BenchPair};
+  twrrPeriods:{'1yr':number|null;'2yr':number|null;'3yr':number|null;'5yr':number|null;inception:number;since2020:number|null;ytd?:number|null};
+  benchmarkPeriods:{'1yr':BenchPair;'2yr':BenchPair;'3yr':BenchPair;'5yr':BenchPair;since2020:BenchPair;inception:BenchPair;ytd?:BenchPair};
   holdingsCount:number; latestNAV:number|null;
   totalDayChange:number|null; totalDayChangePct:number|null;
 }
-interface NavPoint { month:string; portfolioValue:number; nav:number|null; monthlyReturn:number|null; sensex:number|null; nifty500:number|null; }
-interface AnnualReturn { year:string|number; portfolioReturn:number; sensexReturn:number|null; nifty500Return:number|null; alpha:number|null; }
+interface NavPoint { month:string; portfolioValue:number; nav:number|null; monthlyReturn:number|null; sensex:number|null; nifty500:number|null; midcap?:number|null; smallcap?:number|null; }
+interface AnnualReturn { year:string|number; portfolioReturn:number; sensexReturn:number|null; nifty500Return:number|null; midcapReturn?:number|null; smallcapReturn?:number|null; alpha:number|null; }
 interface IndexComparison { name:string; twrr:number; twrr2020:number|null; terminalValueL:number|null; }
 interface SectorAgg { sector:string; value:number; invested:number; gainLoss:number; gainPct:number; portfolioPct:number; holdingCount:number; holdings:string[]; avgIrr:number|null; }
 interface McapAgg  { category:string; value:number; invested:number; gainLoss:number; gainPct:number; portfolioPct:number; count:number; }
@@ -55,6 +62,9 @@ const fmtAbs = (n:number) =>
 const pct = (n:number|null) => n!=null ? `${n>=0?'+':''}${n.toFixed(2)}%` : '—';
 const irrColor = (v:number|null) => v==null?'text-slate-500':v>=25?'text-emerald-300 font-bold':v>=15?'text-emerald-400':v>=0?'text-yellow-400':'text-red-400';
 const irrBg    = (v:number|null) => v==null?'':v>=25?'bg-emerald-500/20':v>=15?'bg-emerald-500/10':v>=0?'bg-yellow-500/10':'bg-red-500/10';
+const fmtPE    = (v:number|null|undefined) => v!=null && v > 0 && v < 500 ? v.toFixed(1) : '—';
+const fmtPB    = (v:number|null|undefined) => v!=null && v > 0 ? v.toFixed(2) : '—';
+const fmtNum   = (v:number|null|undefined, dec=1) => v!=null ? v.toFixed(dec) : '—';
 
 const SIGNAL_CFG:Record<string,{bg:string;text:string}> = {
   BUY:       {bg:'bg-emerald-500/25',text:'text-emerald-300'},
@@ -79,8 +89,6 @@ const MCAP_COLORS   = {  'Large Cap':'#3b82f6', 'Mid Cap':'#10b981', 'Small Cap'
 
 // ─────────────────────────────────────────────────────────
 // Custom Interactive Treemap
-// Binary-partition layout (alternating H/V slices)
-// Hover tooltip, smooth transitions, Nunito font
 // ─────────────────────────────────────────────────────────
 
 interface TmNode { symbol:string; currentValue:number; gainPct:number; irr:number|null; duration:number|null; portfolioPct:number; sector:string; signal:string|null; }
@@ -128,8 +136,6 @@ function PortfolioTreemap({ data, nfmt }:{ data:TmNode[]; nfmt:(n:number)=>strin
 
   const handleEnter = useCallback((e:React.MouseEvent<SVGGElement>, node:TmNode, r:TmRect)=>{
     setHov(node.symbol);
-    const svgRect = (e.currentTarget.ownerSVGElement as SVGSVGElement).getBoundingClientRect();
-    const wrapRect = wrapRef.current!.getBoundingClientRect();
     const px = r.x + r.w/2;
     const py = r.y + r.h/2;
     setTip({px, py, node});
@@ -168,49 +174,23 @@ function PortfolioTreemap({ data, nfmt }:{ data:TmNode[]; nfmt:(n:number)=>strin
                 opacity={isHov?1:hov?0.72:0.92}
                 style={{transition:'opacity 0.18s, stroke 0.18s, stroke-width 0.18s'}}
               />
-              {/* Subtle inner glow on hover */}
               {isHov && <rect x={r.x+2} y={r.y+2} width={Math.max(0,rw-2)} height={Math.max(0,rh-2)} fill="none" rx={3} stroke="rgba(255,255,255,0.18)" strokeWidth={1}/>}
-
-              {showTicker && <text
-                x={cx} y={topY}
-                textAnchor="middle" dominantBaseline="middle"
-                fill={textC} fontSize={fs} fontWeight="800"
-                fontFamily="Nunito, Inter, sans-serif" letterSpacing="-0.3"
-                style={{pointerEvents:'none',userSelect:'none'}}>
-                {n.symbol}
-              </text>}
-
-              {showGain && <text
-                x={cx} y={topY+(showTicker?fs+2:0)}
-                textAnchor="middle" dominantBaseline="middle"
-                fill={showTicker?`${textC}cc`:textC} fontSize={fs2} fontWeight="700"
-                fontFamily="Nunito, Inter, sans-serif"
-                style={{pointerEvents:'none',userSelect:'none'}}>
-                {n.gainPct>=0?'+':''}{n.gainPct.toFixed(1)}%
-              </text>}
-
-              {showIrr && <text
-                x={cx} y={topY+(showTicker?fs+2:0)+(showGain?fs2+2:0)}
-                textAnchor="middle" dominantBaseline="middle"
-                fill={`${textC}88`} fontSize={fs3} fontWeight="600"
-                fontFamily="Nunito, Inter, sans-serif"
-                style={{pointerEvents:'none',userSelect:'none'}}>
-                IRR {(n.irr??0)>=0?'+':''}{(n.irr??0).toFixed(0)}%
-              </text>}
+              {showTicker && <text x={cx} y={topY} textAnchor="middle" dominantBaseline="middle"
+                fill={textC} fontSize={fs} fontWeight="800" fontFamily="Nunito, Inter, sans-serif" letterSpacing="-0.3"
+                style={{pointerEvents:'none',userSelect:'none'}}>{n.symbol}</text>}
+              {showGain && <text x={cx} y={topY+(showTicker?fs+2:0)} textAnchor="middle" dominantBaseline="middle"
+                fill={showTicker?`${textC}cc`:textC} fontSize={fs2} fontWeight="700" fontFamily="Nunito, Inter, sans-serif"
+                style={{pointerEvents:'none',userSelect:'none'}}>{n.gainPct>=0?'+':''}{n.gainPct.toFixed(1)}%</text>}
+              {showIrr && <text x={cx} y={topY+(showTicker?fs+2:0)+(showGain?fs2+2:0)} textAnchor="middle" dominantBaseline="middle"
+                fill={`${textC}88`} fontSize={fs3} fontWeight="600" fontFamily="Nunito, Inter, sans-serif"
+                style={{pointerEvents:'none',userSelect:'none'}}>IRR {(n.irr??0)>=0?'+':''}{(n.irr??0).toFixed(0)}%</text>}
             </g>
           );
         })}
       </svg>
-
-      {/* Floating tooltip */}
       {tip && (
-        <div style={{
-          position:'absolute',
-          left: Math.min(tip.px+12, size.w-210),
-          top:  Math.max(4, tip.py-80),
-          zIndex:50, pointerEvents:'none',
-          fontFamily:'Nunito, Inter, sans-serif',
-        }}
+        <div style={{position:'absolute',left:Math.min(tip.px+12,size.w-210),top:Math.max(4,tip.py-80),
+          zIndex:50,pointerEvents:'none',fontFamily:'Nunito, Inter, sans-serif'}}
           className="bg-slate-900/95 backdrop-blur-sm border border-slate-600/60 rounded-xl p-3 w-52 shadow-2xl">
           <div className="flex items-center justify-between mb-2">
             <span className="font-extrabold text-white text-sm tracking-tight">{tip.node.symbol}</span>
@@ -225,9 +205,9 @@ function PortfolioTreemap({ data, nfmt }:{ data:TmNode[]; nfmt:(n:number)=>strin
             {[
               {l:'Value',   v: nfmt(tip.node.currentValue), c:'text-white font-semibold'},
               {l:'Weight',  v: `${tip.node.portfolioPct.toFixed(1)}%`, c:'text-white'},
-              {l:'Gain',    v: `${tip.node.gainPct>=0?'+':''}${tip.node.gainPct.toFixed(1)}%`,    c:tip.node.gainPct>=0?'text-emerald-400 font-semibold':'text-red-400 font-semibold'},
-              tip.node.irr!=null?{l:'IRR', v:`${tip.node.irr>=0?'+':''}${tip.node.irr.toFixed(1)}%`, c:tip.node.irr>=15?'text-emerald-400':tip.node.irr>=0?'text-yellow-400':'text-red-400'}:null,
-              tip.node.duration!=null?{l:'Duration', v:`${tip.node.duration.toFixed(1)}y`, c:'text-slate-300'}:null,
+              {l:'Gain',    v: `${tip.node.gainPct>=0?'+':''}${tip.node.gainPct.toFixed(1)}%`, c:tip.node.gainPct>=0?'text-emerald-400 font-semibold':'text-red-400 font-semibold'},
+              tip.node.irr!=null?{l:'IRR',v:`${tip.node.irr>=0?'+':''}${tip.node.irr.toFixed(1)}%`,c:tip.node.irr>=15?'text-emerald-400':tip.node.irr>=0?'text-yellow-400':'text-red-400'}:null,
+              tip.node.duration!=null?{l:'Duration',v:`${tip.node.duration.toFixed(1)}y`,c:'text-slate-300'}:null,
             ].filter(Boolean).map((row:any)=>(
               <div key={row.l} className="flex justify-between items-center">
                 <span className="text-slate-400">{row.l}</span>
@@ -287,7 +267,6 @@ export default function PortfolioPage() {
 
   useEffect(() => { fetchData(); },[]);
 
-  // Normalise factor: scale everything to ₹1Cr portfolio
   const normFactor = normalized && summary ? 1e7/summary.totalValue : 1;
   const nfmt = (n:number) => fmtAbs(n*normFactor);
 
@@ -314,6 +293,17 @@ export default function PortfolioPage() {
       case 'dayChange':    return d*((a.dayChange??-Infinity)-(b.dayChange??-Infinity));
       case 'dayChangePct': return d*((a.dayChangePct??-Infinity)-(b.dayChangePct??-Infinity));
       case 'signal':       return d*((SIGNAL_ORDER[a.signal??'']??99)-(SIGNAL_ORDER[b.signal??'']??99));
+      case 'week52High':   return d*((a.week52High??-Infinity)-(b.week52High??-Infinity));
+      case 'week52Low':    return d*((a.week52Low??-Infinity)-(b.week52Low??-Infinity));
+      case 'pctFrom52H':   return d*((a.pctFrom52High??-Infinity)-(b.pctFrom52High??-Infinity));
+      case 'pctFrom52L':   return d*((a.pctFrom52Low??-Infinity)-(b.pctFrom52Low??-Infinity));
+      case 'pe':           return d*((a.trailingPE??Infinity)-(b.trailingPE??Infinity));
+      case 'medianPe':     return d*((a.medianPE5yr??Infinity)-(b.medianPE5yr??Infinity));
+      case 'pb':           return d*((a.pb??Infinity)-(b.pb??Infinity));
+      case 'evEbitda':     return d*((a.evEbitda??Infinity)-(b.evEbitda??Infinity));
+      case 'divYield':     return d*((a.divYield??-Infinity)-(b.divYield??-Infinity));
+      case 'roe':          return d*((a.roe??-Infinity)-(b.roe??-Infinity));
+      case 'mcap':         return d*((a.marketCapCr??-Infinity)-(b.marketCapCr??-Infinity));
       default: return 0;
     }
   });
@@ -321,13 +311,29 @@ export default function PortfolioPage() {
   const filteredNav = navRange==='all' ? navSeries
     : navSeries.slice(-(navRange==='1yr'?12:navRange==='3yr'?36:60));
 
+  // NAV chart data — normalize all indices to portfolio NAV at their respective first available month
   const navChartData = (() => {
-    const first = filteredNav.find(x=>x.sensex&&x.nav);
-    const sBase = first?.sensex||1; const n5Base = first?.nifty500||1; const navBase = first?.nav||1;
+    const firstNav = filteredNav.find(x=>x.nav);
+    const navBase  = firstNav?.nav||1;
+
+    const firstSx  = filteredNav.find(x=>x.sensex&&x.nav);
+    const sBase    = firstSx?.sensex||1;  const sNavBase  = firstSx?.nav||navBase;
+
+    const firstN5  = filteredNav.find(x=>x.nifty500&&x.nav);
+    const n5Base   = firstN5?.nifty500||1; const n5NavBase = firstN5?.nav||navBase;
+
+    const firstMid = filteredNav.find(x=>x.midcap&&x.nav);
+    const midBase  = firstMid?.midcap||1;  const midNavBase= firstMid?.nav||navBase;
+
+    const firstSc  = filteredNav.find(x=>x.smallcap&&x.nav);
+    const scBase   = firstSc?.smallcap||1; const scNavBase = firstSc?.nav||navBase;
+
     return filteredNav.map(d=>({
       month: d.month.slice(0,7), nav: d.nav,
-      sensexNorm:   d.sensex   ? Math.round((d.sensex/sBase)*navBase)   : null,
-      nifty500Norm: d.nifty500 ? Math.round((d.nifty500/n5Base)*navBase): null,
+      sensexNorm:   d.sensex   ? Math.round((d.sensex/sBase)*sNavBase)     : null,
+      nifty500Norm: d.nifty500 ? Math.round((d.nifty500/n5Base)*n5NavBase) : null,
+      midcapNorm:   d.midcap   ? Math.round((d.midcap/midBase)*midNavBase) : null,
+      smallcapNorm: d.smallcap ? Math.round((d.smallcap/scBase)*scNavBase) : null,
       portfolioValue: d.portfolioValue, monthlyReturn: d.monthlyReturn,
     }));
   })();
@@ -387,7 +393,7 @@ export default function PortfolioPage() {
           </div>
         </div>
 
-        {/* ── KPI Cards: Value, Today, Gain, XIRR ── */}
+        {/* ── KPI Cards ── */}
         {summary && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[
@@ -414,52 +420,63 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {/* ── TWRR — 6 cards with benchmark comparison ── */}
+        {/* ── TWRR — 7 cards with 4-benchmark comparison ── */}
         {summary && (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <BarChart2 className="w-4 h-4 text-blue-400"/>
               <h2 className="text-base font-bold text-white">Time-Weighted Return (TWRR) — True Portfolio Skill</h2>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
               {([
+                {label:'YTD 2026',         key:'ytd',       bench: summary.benchmarkPeriods.ytd,      noAnn:true},
                 {label:'1 Year',           key:'1yr',       bench: summary.benchmarkPeriods['1yr']},
-                {label:'2 Years (ann.)',    key:'2yr',       bench: summary.benchmarkPeriods['2yr']},
-                {label:'3 Years (ann.)',    key:'3yr',       bench: summary.benchmarkPeriods['3yr']},
-                {label:'5 Years (ann.)',    key:'5yr',       bench: summary.benchmarkPeriods['5yr']},
+                {label:'2 Yrs (ann.)',     key:'2yr',       bench: summary.benchmarkPeriods['2yr']},
+                {label:'3 Yrs (ann.)',     key:'3yr',       bench: summary.benchmarkPeriods['3yr']},
+                {label:'5 Yrs (ann.)',     key:'5yr',       bench: summary.benchmarkPeriods['5yr']},
                 {label:'Since 2020 (ann.)',key:'since2020', bench: summary.benchmarkPeriods.since2020},
                 {label:'Since 2015 (ann.)',key:'inception', bench: summary.benchmarkPeriods.inception},
-              ] as {label:string;key:keyof typeof summary.twrrPeriods;bench:BenchPair}[]).map(({label,key,bench})=>{
+              ] as {label:string;key:keyof typeof summary.twrrPeriods;bench?:BenchPair;noAnn?:boolean}[]).map(({label,key,bench,noAnn})=>{
                 const val = summary.twrrPeriods[key];
-                const vs  = bench.sensex;
-                const vn  = bench.nifty500;
-                const alphaSx = val!=null&&vs!=null ? val-vs : null;
-                const alphaN5 = val!=null&&vn!=null ? val-vn : null;
+                const vs  = bench?.sensex   ?? null;
+                const vn  = bench?.nifty500 ?? null;
+                const vm  = bench?.midcap   ?? null;
+                const vsc = bench?.smallcap ?? null;
+                const alphaSx  = val!=null&&vs!=null  ? val-vs  : null;
+                const alphaN5  = val!=null&&vn!=null  ? val-vn  : null;
+                const alphaMid = val!=null&&vm!=null  ? val-vm  : null;
+                const alphaSc  = val!=null&&vsc!=null ? val-vsc : null;
+                const colorVal = val!=null&&val>=0?'text-emerald-400':'text-red-400';
                 return (
-                  <div key={key} className="bg-slate-800 rounded-lg p-3">
-                    <div className="text-xs text-slate-400 mb-1.5 leading-tight">{label}</div>
-                    <div className={`text-lg font-bold ${val!=null&&val>=0?'text-emerald-400':'text-red-400'}`}>
+                  <div key={key} className="bg-slate-800 rounded-lg p-2.5">
+                    <div className="text-[10px] text-slate-400 mb-1 leading-tight">{label}</div>
+                    <div className={`text-base font-bold ${colorVal}`}>
                       {val!=null?`${val>=0?'+':''}${val.toFixed(2)}%`:'—'}
                     </div>
-                    {vs!=null&&(
-                      <div className="mt-1.5 space-y-0.5 text-xs">
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">Sensex</span>
-                          <span className={alphaSx!=null&&alphaSx>=0?'text-emerald-400':'text-red-400'}>
-                            {vs>=0?'+':''}{vs.toFixed(1)}% {alphaSx!=null?`(${alphaSx>=0?'+':''}${alphaSx.toFixed(1)}%)`:''}</span>
+                    {noAnn && <div className="text-[9px] text-slate-600 mb-1">not annualised</div>}
+                    <div className="mt-1 space-y-0.5 text-[10px]">
+                      {[
+                        {l:'Sen', v:vs,  a:alphaSx,  c:'text-blue-400'},
+                        {l:'N500',v:vn,  a:alphaN5,  c:'text-violet-400'},
+                        {l:'Mid', v:vm,  a:alphaMid, c:'text-amber-400'},
+                        {l:'Sml', v:vsc, a:alphaSc,  c:'text-rose-400'},
+                      ].map(({l,v,a,c})=>(
+                        <div key={l} className="flex justify-between items-center gap-1">
+                          <span className={`${c} font-medium w-7 flex-shrink-0`}>{l}</span>
+                          {v!=null ? (
+                            <span className={a!=null&&a>=0?'text-emerald-400':'text-red-400'}>
+                              {v>=0?'+':''}{v.toFixed(1)}%
+                              {a!=null && <span className="text-slate-500 ml-0.5">({a>=0?'+':''}{a.toFixed(1)})</span>}
+                            </span>
+                          ) : <span className="text-slate-600">—</span>}
                         </div>
-                        <div className="flex justify-between">
-                          <span className="text-slate-500">N500</span>
-                          <span className={alphaN5!=null&&alphaN5>=0?'text-emerald-400':'text-red-400'}>
-                            {vn!=null&&vn>=0?'+':''}{vn?.toFixed(1)}% {alphaN5!=null?`(${alphaN5>=0?'+':''}${alphaN5.toFixed(1)}%)`:''}</span>
-                        </div>
-                      </div>
-                    )}
+                      ))}
+                    </div>
                   </div>
                 );
               })}
             </div>
-            <p className="text-xs text-slate-600 mt-2">Brackets show portfolio alpha vs each benchmark. Negative = underperformance.</p>
+            <p className="text-[10px] text-slate-600 mt-2">Alpha in brackets vs each benchmark. Negative = underperformance. Smallcap 250 data from Oct 2022 (fund proxy).</p>
           </div>
         )}
 
@@ -477,7 +494,7 @@ export default function PortfolioPage() {
                 ))}
               </div>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
                 {name:'Your Portfolio', twrr:portfolioTwrr, terminalValueL:summary.totalValue/1e5, highlight:true},
                 ...indexComparison.map(i=>({
@@ -486,9 +503,9 @@ export default function PortfolioPage() {
                   terminalValueL:i.terminalValueL, highlight:false,
                 }))
               ].map(item=>{
-                const maxT    = Math.max(portfolioTwrr,...indexComparison.map(i=>compPeriod==='2020'?(i.twrr2020??i.twrr):i.twrr));
-                const barPct  = Math.max(4,Math.round((item.twrr/maxT)*100));
-                const alpha   = item.highlight?null:portfolioTwrr-item.twrr;
+                const maxT   = Math.max(portfolioTwrr,...indexComparison.map(i=>compPeriod==='2020'?(i.twrr2020??i.twrr):i.twrr));
+                const barPct = Math.max(4,Math.round((item.twrr/maxT)*100));
+                const alpha  = item.highlight?null:portfolioTwrr-item.twrr;
                 return (
                   <div key={item.name} className={`rounded-xl p-3 border ${item.highlight?'border-emerald-500/50 bg-emerald-500/10':'border-slate-700 bg-slate-800/50'}`}>
                     <div className="text-xs font-semibold text-slate-400 mb-1 truncate">{item.name}</div>
@@ -511,10 +528,10 @@ export default function PortfolioPage() {
           </div>
         )}
 
-        {/* ── NAV Chart ── */}
+        {/* ── NAV Chart — 5 lines ── */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-3 gap-2">
-            <h2 className="text-base font-bold text-white">Portfolio NAV vs Sensex &amp; Nifty 500 (Base 1,000)</h2>
+            <h2 className="text-base font-bold text-white">Portfolio NAV vs Sensex, Nifty 500, Midcap 150 &amp; Smallcap 250</h2>
             <div className="flex gap-1.5 flex-wrap">
               {(['all','5yr','3yr','1yr'] as const).map(r=>(
                 <button key={r} onClick={()=>setNavRange(r)}
@@ -538,11 +555,15 @@ export default function PortfolioPage() {
                 <XAxis dataKey="month" stroke="#475569" tick={{fontSize:9}} interval={xInt}/>
                 <YAxis stroke="#475569" tick={{fontSize:9}}/>
                 <Tooltip contentStyle={{backgroundColor:'#0f172a',border:'1px solid #334155',borderRadius:8,fontSize:11}}
-                  formatter={(v:any,name:any)=>[typeof v==='number'?v.toFixed(0):v, name==='nav'?'Portfolio NAV':name==='sensexNorm'?'Sensex':'Nifty 500']}/>
-                <Legend wrapperStyle={{fontSize:11}} formatter={v=>v==='nav'?'Portfolio NAV':v==='sensexNorm'?'Sensex':'Nifty 500'}/>
-                <Line type="monotone" dataKey="nav"          stroke="#10b981" strokeWidth={2.5} dot={false} name="nav"/>
-                <Line type="monotone" dataKey="sensexNorm"   stroke="#3b82f6" strokeWidth={1.5} dot={false} strokeDasharray="5 3" name="sensexNorm"/>
-                <Line type="monotone" dataKey="nifty500Norm" stroke="#8b5cf6" strokeWidth={1.5} dot={false} strokeDasharray="3 3" name="nifty500Norm"/>
+                  formatter={(v:any,name:any)=>[typeof v==='number'?v.toFixed(0):v,
+                    name==='nav'?'Portfolio NAV':name==='sensexNorm'?'Sensex':name==='nifty500Norm'?'Nifty 500':name==='midcapNorm'?'Midcap 150':'Smallcap 250']}/>
+                <Legend wrapperStyle={{fontSize:11}} formatter={v=>
+                  v==='nav'?'Portfolio NAV':v==='sensexNorm'?'Sensex':v==='nifty500Norm'?'Nifty 500':v==='midcapNorm'?'Midcap 150':'Smallcap 250'}/>
+                <Line type="monotone" dataKey="nav"           stroke="#10b981" strokeWidth={2.5} dot={false} name="nav"/>
+                <Line type="monotone" dataKey="sensexNorm"    stroke="#3b82f6" strokeWidth={1.5} dot={false} strokeDasharray="5 3"   name="sensexNorm"/>
+                <Line type="monotone" dataKey="nifty500Norm"  stroke="#8b5cf6" strokeWidth={1.5} dot={false} strokeDasharray="3 3"   name="nifty500Norm"/>
+                <Line type="monotone" dataKey="midcapNorm"    stroke="#f59e0b" strokeWidth={1.5} dot={false} strokeDasharray="4 2"   name="midcapNorm"/>
+                <Line type="monotone" dataKey="smallcapNorm"  stroke="#ef4444" strokeWidth={1.5} dot={false} strokeDasharray="2 2"   name="smallcapNorm"/>
               </LineChart>
             ):navView==='value'?(
               <LineChart data={navChartData}>
@@ -569,24 +590,28 @@ export default function PortfolioPage() {
               </BarChart>
             )}
           </ResponsiveContainer>
+          {navView==='nav' && <p className="text-[10px] text-slate-600 mt-1">All indices rebased to portfolio NAV at their first available month in the selected range. Smallcap 250 data from Oct 2022.</p>}
         </div>
 
         {/* ── Annual Returns ── */}
         {annualReturns.length>0&&(
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
-            <h2 className="text-base font-bold text-white mb-3">Annual Returns — Portfolio vs Sensex vs Nifty 500</h2>
+            <h2 className="text-base font-bold text-white mb-3">Annual Returns — Portfolio vs Indices</h2>
             <ResponsiveContainer width="100%" height={240}>
               <BarChart data={annualReturns} barCategoryGap="20%">
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
                 <XAxis dataKey="year" stroke="#475569" tick={{fontSize:10}}/>
                 <YAxis stroke="#475569" tick={{fontSize:10}} tickFormatter={v=>`${v}%`}/>
                 <Tooltip contentStyle={{backgroundColor:'#0f172a',border:'1px solid #334155',borderRadius:8,fontSize:11}}
-                  formatter={(v:any,name:any)=>[`${v?.toFixed(1)}%`, name==='portfolioReturn'?'Portfolio':name==='sensexReturn'?'Sensex':'Nifty 500']}/>
-                <Legend wrapperStyle={{fontSize:11}} formatter={v=>v==='portfolioReturn'?'Portfolio':v==='sensexReturn'?'Sensex':'Nifty 500'}/>
+                  formatter={(v:any,name:any)=>[`${v?.toFixed(1)}%`,
+                    name==='portfolioReturn'?'Portfolio':name==='sensexReturn'?'Sensex':name==='nifty500Return'?'Nifty 500':name==='midcapReturn'?'Midcap 150':'Smallcap 250']}/>
+                <Legend wrapperStyle={{fontSize:11}} formatter={v=>v==='portfolioReturn'?'Portfolio':v==='sensexReturn'?'Sensex':v==='nifty500Return'?'Nifty 500':v==='midcapReturn'?'Midcap 150':'Smallcap 250'}/>
                 <ReferenceLine y={0} stroke="#475569"/>
                 <Bar dataKey="portfolioReturn" fill="#10b981" radius={[3,3,0,0]} name="portfolioReturn"/>
-                <Bar dataKey="sensexReturn"    fill="#3b82f6" radius={[3,3,0,0]} name="sensexReturn" opacity={0.75}/>
-                <Bar dataKey="nifty500Return"  fill="#8b5cf6" radius={[3,3,0,0]} name="nifty500Return" opacity={0.75}/>
+                <Bar dataKey="sensexReturn"    fill="#3b82f6" radius={[3,3,0,0]} name="sensexReturn"    opacity={0.75}/>
+                <Bar dataKey="nifty500Return"  fill="#8b5cf6" radius={[3,3,0,0]} name="nifty500Return"  opacity={0.75}/>
+                <Bar dataKey="midcapReturn"    fill="#f59e0b" radius={[3,3,0,0]} name="midcapReturn"    opacity={0.75}/>
+                <Bar dataKey="smallcapReturn"  fill="#ef4444" radius={[3,3,0,0]} name="smallcapReturn"  opacity={0.75}/>
               </BarChart>
             </ResponsiveContainer>
           </div>
@@ -595,11 +620,11 @@ export default function PortfolioPage() {
         {/* ── Holdings Table ── */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-base font-bold text-white">Holdings — Stock-wise IRR</h2>
+            <h2 className="text-base font-bold text-white">Holdings — Stock-wise IRR &amp; Valuation</h2>
             <div className="text-xs text-slate-500 hidden sm:block">Click headers to sort</div>
           </div>
           <div className="overflow-x-auto -mx-1">
-            <table className="w-full text-xs border-collapse" style={{minWidth:'1200px'}}>
+            <table className="w-full text-xs border-collapse" style={{minWidth:'2100px'}}>
               <thead>
                 <tr className="border-b border-slate-700">
                   <th className="sticky left-0 bg-slate-900 text-left px-2 py-2 text-xs font-medium text-slate-400 cursor-pointer hover:text-white whitespace-nowrap z-10"
@@ -620,6 +645,19 @@ export default function PortfolioPage() {
                   <Th col="duration"     label="Duration"/>
                   <Th col="dayChange"    label="1D ₹"/>
                   <Th col="dayChangePct" label="1D%"/>
+                  {/* 52-week columns */}
+                  <Th col="week52High"   label="52W High"/>
+                  <Th col="week52Low"    label="52W Low"/>
+                  <Th col="pctFrom52H"   label="↓ from High"/>
+                  <Th col="pctFrom52L"   label="↑ from Low"/>
+                  {/* Valuation columns */}
+                  <Th col="pe"           label="PE (TTM)"/>
+                  <Th col="medianPe"     label="PE 5yr Median"/>
+                  <Th col="pb"           label="P/B"/>
+                  <Th col="evEbitda"     label="EV/EBITDA"/>
+                  <Th col="roe"          label="ROE%"/>
+                  <Th col="divYield"     label="Div Yield%"/>
+                  <Th col="mcap"         label="MCap (Cr)"/>
                   <Th col="signal"       label="Action"/>
                 </tr>
               </thead>
@@ -663,6 +701,44 @@ export default function PortfolioPage() {
                     <td className={`text-right px-2 py-2 whitespace-nowrap ${h.dayChangePct==null?'text-slate-500':h.dayChangePct>=0?'text-emerald-400':'text-red-400'}`}>
                       {h.dayChangePct!=null?`${h.dayChangePct>=0?'+':''}${h.dayChangePct.toFixed(2)}%`:'—'}
                     </td>
+                    {/* 52-week columns */}
+                    <td className="text-right px-2 py-2 whitespace-nowrap text-slate-300">
+                      {h.week52High!=null ? `₹${h.week52High.toLocaleString('en-IN', {maximumFractionDigits:1})}` : '—'}
+                    </td>
+                    <td className="text-right px-2 py-2 whitespace-nowrap text-slate-300">
+                      {h.week52Low!=null ? `₹${h.week52Low.toLocaleString('en-IN', {maximumFractionDigits:1})}` : '—'}
+                    </td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap font-medium ${h.pctFrom52High==null?'text-slate-500':h.pctFrom52High>=-5?'text-emerald-400':h.pctFrom52High>=-15?'text-yellow-400':'text-red-400'}`}>
+                      {h.pctFrom52High!=null ? `${h.pctFrom52High.toFixed(1)}%` : '—'}
+                    </td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap font-medium ${h.pctFrom52Low==null?'text-slate-500':h.pctFrom52Low>=50?'text-emerald-400':h.pctFrom52Low>=20?'text-yellow-400':'text-slate-300'}`}>
+                      {h.pctFrom52Low!=null ? `+${h.pctFrom52Low.toFixed(1)}%` : '—'}
+                    </td>
+                    {/* Valuation columns */}
+                    <td className={`text-right px-2 py-2 whitespace-nowrap ${
+                      h.trailingPE==null||h.trailingPE<=0?'text-slate-500':
+                      h.medianPE5yr&&h.trailingPE>h.medianPE5yr*1.2?'text-red-400':
+                      h.medianPE5yr&&h.trailingPE<h.medianPE5yr*0.8?'text-emerald-400':'text-slate-300'}`}>
+                      {fmtPE(h.trailingPE)}
+                    </td>
+                    <td className="text-right px-2 py-2 whitespace-nowrap text-slate-400">
+                      {fmtPE(h.medianPE5yr)}
+                    </td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap ${h.pb==null?'text-slate-500':h.pb>5?'text-amber-400':'text-slate-300'}`}>
+                      {fmtPB(h.pb)}
+                    </td>
+                    <td className="text-right px-2 py-2 whitespace-nowrap text-slate-400">
+                      {h.evEbitda!=null&&h.evEbitda>0 ? fmtNum(h.evEbitda) : '—'}
+                    </td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap ${h.roe==null?'text-slate-500':h.roe>=20?'text-emerald-400':h.roe>=10?'text-yellow-400':'text-slate-400'}`}>
+                      {h.roe!=null ? `${h.roe.toFixed(1)}%` : '—'}
+                    </td>
+                    <td className={`text-right px-2 py-2 whitespace-nowrap ${h.divYield==null||h.divYield<=0?'text-slate-600':'text-blue-400'}`}>
+                      {h.divYield&&h.divYield>0 ? `${h.divYield.toFixed(2)}%` : '—'}
+                    </td>
+                    <td className="text-right px-2 py-2 whitespace-nowrap text-slate-400">
+                      {h.marketCapCr!=null ? (h.marketCapCr>=10000?`${(h.marketCapCr/1000).toFixed(0)}K`:h.marketCapCr.toFixed(0)) : '—'}
+                    </td>
                     <td className="text-center px-2 py-2 whitespace-nowrap"><SignalBadge signal={h.signal}/></td>
                   </tr>
                 ))}
@@ -688,7 +764,7 @@ export default function PortfolioPage() {
                     <td className={`text-right px-2 py-2 text-xs whitespace-nowrap ${summary.closedPositions.realizedPnl>=0?'text-emerald-400':'text-red-400'}`}>
                       {pct(summary.closedPositions.grossInvested>0?summary.closedPositions.realizedPnl/summary.closedPositions.grossInvested*100:null)}
                     </td>
-                    <td/><td/><td/><td/>
+                    <td/><td/><td/><td/><td/><td/><td/><td/><td/><td/><td/><td/><td/><td/><td/>
                   </tr>
                 )}
               </tbody>
@@ -719,13 +795,14 @@ export default function PortfolioPage() {
                   <td className={`text-right px-2 py-2 whitespace-nowrap ${(summary?.totalDayChangePct??0)>=0?'text-emerald-400':'text-red-400'}`}>
                     {summary?.totalDayChangePct!=null?`${summary.totalDayChangePct>=0?'+':''}${summary.totalDayChangePct.toFixed(2)}%`:'—'}
                   </td>
-                  <td/>
+                  <td/><td/><td/><td/><td/><td/><td/><td/><td/><td/><td/>
                 </tr>
               </tfoot>
             </table>
           </div>
           <div className="mt-1.5 text-xs text-slate-600 text-right">
-            † Return% = true total return incl. realized gains/losses · stocks with exits show unrealised% in smaller text below · IRR = annualised{normalized?' · Normalised to ₹1Cr':''}
+            † Return% = true total return incl. realized gains · IRR = annualised · PE colored red if &gt;20% above 5yr median · ↓ from High: green if within 5%, red if &gt;15% below
+            {normalized?' · Normalised to ₹1Cr':''}
           </div>
         </div>
 
@@ -762,7 +839,6 @@ export default function PortfolioPage() {
         {/* ── Chart 2 & 3: Sector Allocation + Sector Scorecard ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* Sector Allocation — horizontal bar, sorted by weight */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <h2 className="text-base font-bold text-white mb-0.5">Sector Allocation</h2>
             <p className="text-xs text-slate-500 mb-3">By current value · bar = % of portfolio</p>
@@ -806,10 +882,9 @@ export default function PortfolioPage() {
             </div>
           </div>
 
-          {/* Sector Scorecard: Cumulative Gain% vs Annualised IRR% */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <h2 className="text-base font-bold text-white mb-0.5">Sector Scorecard</h2>
-            <p className="text-xs text-slate-500 mb-3">Cumulative gain % vs annualised IRR · sorted by IRR · gap reveals holding period effect</p>
+            <p className="text-xs text-slate-500 mb-3">Cumulative gain % vs annualised IRR · sorted by IRR</p>
             <ResponsiveContainer width="100%" height={Math.max(280, sectorAgg.filter(s=>s.avgIrr!=null).length*32)}>
               <BarChart
                 data={[...sectorAgg].filter(s=>s.avgIrr!=null).sort((a,b)=>(b.avgIrr??0)-(a.avgIrr??0))}
@@ -848,22 +923,18 @@ export default function PortfolioPage() {
         {/* ── Chart 4 & 5: Market Cap Donut + IRR vs Weight Bubble ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
 
-          {/* Market Cap — Donut + stats */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <h2 className="text-base font-bold text-white mb-0.5">Market Cap Composition</h2>
-            <p className="text-xs text-slate-500 mb-4">Portfolio split by cap tier · gain shown per tier</p>
+            <p className="text-xs text-slate-500 mb-4">Portfolio split by cap tier</p>
             <div className="flex items-center gap-4">
               <div className="shrink-0">
                 <PieChart width={190} height={190}>
                   <Pie data={mcapAgg} dataKey="portfolioPct" nameKey="category"
                     cx="50%" cy="50%" innerRadius={58} outerRadius={90}
                     paddingAngle={4} stroke="none" startAngle={90} endAngle={-270}>
-                    {mcapAgg.map(m=>(
-                      <Cell key={m.category} fill={(MCAP_COLORS as any)[m.category]}/>
-                    ))}
+                    {mcapAgg.map(m=>(<Cell key={m.category} fill={(MCAP_COLORS as any)[m.category]}/>))}
                   </Pie>
-                  <Tooltip
-                    contentStyle={{backgroundColor:'#0f172a',border:'1px solid #334155',borderRadius:8,fontSize:11}}
+                  <Tooltip contentStyle={{backgroundColor:'#0f172a',border:'1px solid #334155',borderRadius:8,fontSize:11}}
                     content={({active,payload}:any)=>{
                       if(!active||!payload?.[0]) return null;
                       const m:McapAgg = payload[0].payload;
@@ -900,10 +971,9 @@ export default function PortfolioPage() {
             </div>
           </div>
 
-          {/* IRR vs Portfolio Weight — Bubble Chart */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
             <h2 className="text-base font-bold text-white mb-0.5">IRR vs Portfolio Weight</h2>
-            <p className="text-xs text-slate-500 mb-3">Bubble size = weight · Top-right quadrant = high-conviction, high-return stocks</p>
+            <p className="text-xs text-slate-500 mb-3">Bubble size = weight · Top-right = high-conviction, high-return</p>
             <ResponsiveContainer width="100%" height={265}>
               <ScatterChart margin={{top:10,right:20,bottom:28,left:5}}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
@@ -932,7 +1002,6 @@ export default function PortfolioPage() {
                     );
                   }}
                 />
-                {/* Quadrant guides */}
                 <ReferenceLine x={0}  stroke="#ef4444" strokeDasharray="4 2" strokeOpacity={0.35}/>
                 <ReferenceLine x={15} stroke="#f59e0b" strokeDasharray="4 2" strokeOpacity={0.35}
                   label={{value:'15% IRR',position:'insideTopRight',fontSize:8,fill:'#f59e0b'}}/>
