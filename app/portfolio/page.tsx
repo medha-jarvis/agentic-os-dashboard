@@ -563,7 +563,7 @@ export default function PortfolioPage() {
                 <Line type="monotone" dataKey="sensexNorm"    stroke="#3b82f6" strokeWidth={1.5} dot={false} strokeDasharray="5 3"   name="sensexNorm"/>
                 <Line type="monotone" dataKey="nifty500Norm"  stroke="#8b5cf6" strokeWidth={1.5} dot={false} strokeDasharray="3 3"   name="nifty500Norm"/>
                 <Line type="monotone" dataKey="midcapNorm"    stroke="#f59e0b" strokeWidth={1.5} dot={false} strokeDasharray="4 2"   name="midcapNorm"/>
-                <Line type="monotone" dataKey="smallcapNorm"  stroke="#ef4444" strokeWidth={1.5} dot={false} strokeDasharray="2 2"   name="smallcapNorm"/>
+                {(navRange==='1yr'||navRange==='3yr') && <Line type="monotone" dataKey="smallcapNorm" stroke="#ef4444" strokeWidth={1.5} dot={false} strokeDasharray="2 2" name="smallcapNorm"/>}
               </LineChart>
             ):navView==='value'?(
               <LineChart data={navChartData}>
@@ -590,7 +590,10 @@ export default function PortfolioPage() {
               </BarChart>
             )}
           </ResponsiveContainer>
-          {navView==='nav' && <p className="text-[10px] text-slate-600 mt-1">All indices rebased to portfolio NAV at their first available month in the selected range. Smallcap 250 data from Oct 2022.</p>}
+          {navView==='nav' && <p className="text-[10px] text-slate-500 mt-1">
+            Indices rebased to portfolio NAV at their respective data-start month.
+            Midcap 150 data from Jan 2019 · Smallcap 250 from Oct 2022 (shown in 1yr/3yr only — too recent for All/5yr comparison).
+          </p>}
         </div>
 
         {/* ── Annual Returns ── */}
