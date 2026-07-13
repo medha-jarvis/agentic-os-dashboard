@@ -497,13 +497,15 @@ export default function PortfolioPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
               {[
                 {name:'Your Portfolio', twrr:portfolioTwrr, terminalValueL:summary.totalValue/1e5, highlight:true},
-                ...indexComparison.map(i=>({
-                  name:i.name,
-                  twrr: compPeriod==='2020'?(i.twrr2020??i.twrr):i.twrr,
-                  terminalValueL:i.terminalValueL, highlight:false,
-                }))
+                ...indexComparison
+                  .map(i=>({
+                    name:i.name,
+                    twrr: compPeriod==='2020' ? i.twrr2020 : i.twrr,
+                    terminalValueL:i.terminalValueL, highlight:false,
+                  }))
+                  .filter(i => i.twrr != null)
               ].map(item=>{
-                const maxT   = Math.max(portfolioTwrr,...indexComparison.map(i=>compPeriod==='2020'?(i.twrr2020??i.twrr):i.twrr));
+                const maxT   = Math.max(portfolioTwrr,...indexComparison.map(i=>compPeriod==='2020'?i.twrr2020??0:i.twrr??0).filter(Boolean));
                 const barPct = Math.max(4,Math.round((item.twrr/maxT)*100));
                 const alpha  = item.highlight?null:portfolioTwrr-item.twrr;
                 return (
