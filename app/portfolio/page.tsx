@@ -510,7 +510,8 @@ export default function PortfolioPage() {
                 const alpha  = item.highlight?null:portfolioTwrr-item.twrr;
                 return (
                   <div key={item.name} className={`rounded-xl p-3 border ${item.highlight?'border-emerald-500/50 bg-emerald-500/10':'border-slate-700 bg-slate-800/50'}`}>
-                    <div className="text-xs font-semibold text-slate-400 mb-1 truncate">{item.name}</div>
+                    <div className="text-xs font-semibold text-slate-400 mb-0.5 truncate">{item.name}</div>
+                    {item.name==='Midcap 150'&&compPeriod==='inception'&&<div className="text-[9px] text-amber-600/70 mb-0.5">NSE back-calc from 2015</div>}
                     <div className={`text-xl font-bold mb-0.5 ${item.highlight?'text-emerald-400':'text-blue-400'}`}>
                       {item.twrr>=0?'+':''}{item.twrr.toFixed(2)}%
                     </div>
@@ -592,10 +593,18 @@ export default function PortfolioPage() {
               </BarChart>
             )}
           </ResponsiveContainer>
-          {navView==='nav' && <p className="text-[10px] text-slate-500 mt-1">
-            Indices rebased to portfolio NAV at their respective data-start month.
-            Midcap 150 data from Jan 2019 · Smallcap 250 from Oct 2022 (shown in 1yr/3yr only — too recent for All/5yr comparison).
-          </p>}
+          {navView==='nav' && (
+            <div className="mt-2 space-y-0.5">
+              <p className="text-[10px] text-slate-500">
+                Indices rebased to portfolio NAV at their respective data-start month. Smallcap 250 shown in 1yr/3yr only.
+              </p>
+              {navRange==='all' && (
+                <p className="text-[10px] text-amber-600/80">
+                  ⚠ Midcap 150 index launched Apr 2019 — chart shows only 2019–2026. The 9.12% alpha vs Midcap in the TWRR cards was earned in 2015–2019 (when midcap was flat/negative), not visible here.
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* ── Annual Returns ── */}
